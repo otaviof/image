@@ -5,29 +5,14 @@ on:
   push:
     branches:
       - main
-
+  
 jobs:
   image:
     name: image
-    runs-on: ubuntu-latest
-    steps:
-    - name: check out code
-      uses: actions/checkout@v2
-
-    - name: registry login
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: shipwright-io
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: build image and push
-      uses: docker/build-push-action@v2
-      with:
-        push: true
-        context: ./
-        file: ./Containerfile
-        tags: ghcr.io/shipwright-io/imgctrl:latest
+    uses: ./.github/actions/buildimage.yaml
+    with:
+      image_tag: latest
+      github_token: ${{ secrets.GITHUB_TOKEN }}
 
   release:
     name: release

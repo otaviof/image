@@ -1,0 +1,40 @@
+---
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: container image tag
+        type: string
+        default: latest
+        required: false
+      version:
+        description: project version
+        type: string
+        default: v0.0.0
+        required: false
+    secrets:
+      github_token:
+        description: container registry authentication token
+        required: true
+
+jobs:
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.16.x
+      - uses: imjasonh/setup-ko@78eea08f10db87a7a23a666a4a6fe2734f2eeb8d
+      - name: registry login
+        env:
+          GITHUB_TOKEN: ${{ secrets.github_token }}
+        run: |
+          make registry-login
+      - name: build and push image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          make build-image VERSION="${VERSION}" TAG="${IMAGE_TAG}"
