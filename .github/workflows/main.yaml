@@ -11,23 +11,19 @@ jobs:
     name: image
     runs-on: ubuntu-latest
     steps:
-    - name: check out code
-      uses: actions/checkout@v2
-
+    - uses: actions/checkout@v2
+    - uses: actions/setup-go@v2
+      with:
+        go-version: 1.16.x
+    - uses: imjasonh/setup-ko@78eea08f10db87a7a23a666a4a6fe2734f2eeb8d
     - name: registry login
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: shipwright-io
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: build image and push
-      uses: docker/build-push-action@v2
-      with:
-        push: true
-        context: ./
-        file: ./Containerfile
-        tags: ghcr.io/shipwright-io/imgctrl:latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        make registry-login
+    - name: build and push image
+      run: |
+        make build-image
 
   release:
     name: release
