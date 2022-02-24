@@ -1,13 +1,8 @@
-# for pull request the actions context is a little bit different. we always use the workflow as
-# defined in the main branch, therefore any change in .github/workflow directory introduced by
-# the PR is ignored. this happens because if leverage the "on: pull_request_target" instead of
-# "on: pull_request". the only practical difference here is that when we checkout the source
-# code we use the source repository (the repo used to open the pr), see "check out code" steps.
 ---
 name: pullrequest
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - main
 
@@ -15,47 +10,32 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/tagger/actions-image:latest
     steps:
     - name: check out code
       uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
 
     - name: run linter
-      run: golint -set_exit_status ./cmd/kubectl-image ./cmd/imgctrl ./controllers/... ./services/...
+      run: make lint
 
   staticcheck:
     name: staticcheck
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/tagger/actions-image:latest
     steps:
     - name: check out code
       uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
 
     - name: run staticcheck
-      run: staticcheck ./...
+      run: make staticcheck
 
   unit:
     name: unit
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/tagger/actions-image:latest
     steps:
     - name: check out source code
       uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
 
     - name: run tests
-      run: go test -mod vendor -v ./...
+      run: make unit
 
   build:
     name: build
@@ -64,16 +44,11 @@ jobs:
       - unit
       - staticcheck
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/tagger/actions-image:latest
     steps:
     - name: check out code
       uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
 
-    - name: build all
+    - name: build
       run: make build
 
   image:
@@ -86,9 +61,6 @@ jobs:
     steps:
     - name: check out code
       uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
 
     - name: registry login
       uses: docker/login-action@v1
@@ -97,36 +69,13 @@ jobs:
         username: shipwright-io
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: build image
-      id: push
-      uses: docker/build-push-action@v2
-      with:
-        push: true
-        context: ./
-        file: ./Containerfile
-        tags: ghcr.io/shipwright-io/imgctrl:pr-${{ github.event.number }}
-
-  release:
-    name: release
-    needs:
-      - image
-      - build
-    runs-on: ubuntu-latest
-    steps:
-    - name: check out code
-      uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
-
-    - name: setting image tag in values.yaml
-      run: sed -i 's/latest/pr-${{ github.event.number }}/g' chart/values.yaml
-
-    - name: upload helm chart artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: helm-chart
-        path: chart
+    - name: build and push image
+      env:
+        VERSION: v0.0.0
+        IMAGE: ghcr.io/shipwright-io/imgctrl:pr-${{ github.event.number }}
+      run: |-
+        make image
+        make push
 
   integration:
     name: integration
@@ -136,33 +85,19 @@ jobs:
     steps:
     - name: check out code
       uses: actions/checkout@v2
-      with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
-
-    - name: download helm chart artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: helm-chart
-        path: downloaded-chart
-
-    - name: install kuttl
-      run: |-
-        curl -o kuttl -L https://github.com/kudobuilder/kuttl/releases/download/v0.11.1/kubectl-kuttl_0.11.1_linux_x86_64
-        chmod 755 kuttl
 
     - name: install kind
       uses: engineerd/setup-kind@v0.5.0
       with:
         version: v0.11.1
 
-    - name: create shipwright namespace
+    - name: create shipwright-build namespace
       run: |-
-        kubectl create namespace shipwright
-        kubectl config set-context --current --namespace=shipwright
+        kubectl create namespace shipwright-build
+        kubectl config set-context --current --namespace=shipwright-build
 
-    - name: install helm chart
-      run: helm install imgctrl ./downloaded-chart
+    - name: install
+      run: make install
 
     - name: sleep for a while
       run: sleep 30
@@ -177,5 +112,8 @@ jobs:
           exit 1
         fi
 
+    - name: install kuttl
+      run: make get-kuttl
+
     - name: e2e
-      run: ./kuttl test --timeout=180 e2e
+      run: make e2e

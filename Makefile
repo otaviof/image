@@ -39,6 +39,22 @@ default: build
 
 build: $(IMGCTRL) $(PLUGIN_DARWIN) $(PLUGIN)
 
+.PHONY: lint
+lint:
+	golint -set_exit_status \
+		./cmd/kubectl-image \
+		./cmd/imgctrl \
+		./controllers/... \
+		./services/...
+
+.PHONY: staticcheck
+staticcheck:
+	staticcheck ./...
+
+.PHONY: unit
+unit:
+	go test -mod vendor -v ./...
+
 .PHONY: $(IMGCTRL)
 $(IMGCTRL):
 	go build \
@@ -100,6 +116,10 @@ generate-k8s:
 .PHONY: image
 image:
 	$(IMAGE_BUILDER) build -f Containerfile -t $(IMAGE) .
+
+.PHONY: push
+push:
+	$(IMAGE_BUILDER) push $(IMAGE)
 
 .PHONY: clean
 clean:
